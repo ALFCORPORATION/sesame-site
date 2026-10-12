@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Company } from "@/lib/supabase";
+import type { Company } from "@/lib/supabase/public";
 
 function escapeVCard(str: string | null | undefined): string {
   return String(str || "")

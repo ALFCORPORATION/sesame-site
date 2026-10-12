@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function Home() {
   return (
     <main
@@ -18,10 +20,22 @@ export default function Home() {
         officielles de votre entreprise, partageables en un scan NFC, un QR
         code ou un e-mail.
       </p>
-      <p className="text-sm m-0" style={{ color: "var(--ink-faint)" }}>
-        Le site est en cours de construction — la création de compte arrive
-        bientôt.
-      </p>
+      <div className="flex items-center gap-3 mt-2">
+        <Link
+          href="/signup"
+          className="h-11 flex items-center px-5 rounded-[11px] font-medium text-[0.92rem]"
+          style={{ background: "var(--brass)", color: "var(--paper-raised)" }}
+        >
+          Créer mon compte
+        </Link>
+        <Link
+          href="/login"
+          className="h-11 flex items-center px-5 rounded-[11px] font-medium text-[0.92rem] border"
+          style={{ borderColor: "var(--line)", color: "var(--ink)" }}
+        >
+          Se connecter
+        </Link>
+      </div>
     </main>
   );
 }

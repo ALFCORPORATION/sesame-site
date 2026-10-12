@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { supabase, type Company } from "@/lib/supabase";
+import { supabase, type Company } from "@/lib/supabase/public";
 import { BusinessCard } from "@/components/BusinessCard";
 
 // Le slug n'est connu qu'à l'exécution (les entreprises sont créées après le
