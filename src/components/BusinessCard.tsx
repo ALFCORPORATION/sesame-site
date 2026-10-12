@@ -1,7 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Company } from "@/lib/supabase/public";
+
+// L'API Web NFC n'est pas (encore) dans les types DOM standard de TypeScript.
+interface NDEFReaderLike {
+  write(
+    message: { records: { recordType: string; data: string }[] },
+    options?: { signal?: AbortSignal }
+  ): Promise<void>;
+}
+declare global {
+  interface Window {
+    NDEFReader?: new () => NDEFReaderLike;
+  }
+}
 
 function escapeVCard(str: string | null | undefined): string {
   return String(str || "")
@@ -93,6 +106,135 @@ function CopyButton({ value }: { value: string }) {
   );
 }
 
+function NfcModal({ onClose }: { onClose: () => void }) {
+  const [supported] = useState(() => typeof window !== "undefined" && "NDEFReader" in window);
+  const [status, setStatus] = useState<"writing" | "success" | "error">("writing");
+  const [errorMsg, setErrorMsg] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const url = typeof window !== "undefined" ? window.location.href : "";
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!supported || !window.NDEFReader) return;
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const ndef = new window.NDEFReader!();
+        await ndef.write({ records: [{ recordType: "url", data: url }] }, { signal: controller.signal });
+        setStatus("success");
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setErrorMsg(err instanceof Error ? err.message : "puce non détectée");
+        setStatus("error");
+      }
+    })();
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supported, attempt]);
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-6" role="dialog" aria-modal="true">
+      <div className="absolute inset-0" style={{ background: "rgba(12,16,26,0.55)" }} onClick={onClose} />
+      <div
+        className="relative w-full max-w-[300px] rounded-[20px] p-7 text-center"
+        style={{ background: "var(--paper-raised)", boxShadow: "0 30px 60px -20px rgba(0,0,0,0.4)" }}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Fermer"
+          className="absolute top-3 right-3 w-9 h-9 rounded-[10px] flex items-center justify-center cursor-pointer"
+          style={{ color: "var(--ink-soft)" }}
+        >
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none">
+            <path d="M6 6l12 12M18 6 6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          </svg>
+        </button>
+        <p className="font-display font-semibold text-[1.05rem] m-0 mt-1">Configurer une puce NFC</p>
+
+        <div className="text-left mt-3.5">
+          {supported ? (
+            <>
+              <div
+                className="flex items-center gap-2.5 p-3.5 rounded-xl text-[0.85rem] mb-3.5"
+                style={{
+                  background:
+                    status === "success"
+                      ? "color-mix(in srgb, var(--success) 14%, transparent)"
+                      : status === "error"
+                        ? "color-mix(in srgb, var(--danger) 12%, transparent)"
+                        : "color-mix(in srgb, var(--brass) 10%, transparent)",
+                  color: "var(--ink)",
+                }}
+              >
+                {status === "writing" && (
+                  <>
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0 animate-pulse" style={{ background: "var(--brass)" }} />
+                    <span>Approchez une puce NFC vierge du dos de votre téléphone…</span>
+                  </>
+                )}
+                {status === "success" && (
+                  <span>Puce configurée avec succès — elle ouvre désormais cette carte au scan.</span>
+                )}
+                {status === "error" && <span>Échec de l&apos;écriture : {errorMsg}.</span>}
+              </div>
+              {status === "writing" && (
+                <p className="text-[0.82rem] m-0" style={{ color: "var(--ink-soft)" }}>
+                  L&apos;écriture démarre automatiquement et se confirme ici.
+                </p>
+              )}
+              {status === "error" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStatus("writing");
+                    setAttempt((n) => n + 1);
+                  }}
+                  className="w-full h-11 rounded-[11px] text-[0.88rem] font-medium cursor-pointer"
+                  style={{ background: "var(--brass)", color: "var(--paper-raised)", border: "none" }}
+                >
+                  Réessayer
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <ol className="m-0 mb-4 pl-5 grid gap-2.5 text-[0.85rem]" style={{ color: "var(--ink-soft)" }}>
+                <li>
+                  Installez une application gratuite d&apos;écriture NFC, comme{" "}
+                  <strong style={{ color: "var(--ink)", fontWeight: 500 }}>NFC Tools</strong>.
+                </li>
+                <li>Dans l&apos;application, choisissez « Écrire » puis « Lien / URL ».</li>
+                <li>Collez le lien ci-dessous, puis approchez une puce NFC vierge du téléphone.</li>
+              </ol>
+              <div className="flex items-center gap-2 border rounded-[10px] py-2 pr-2 pl-3 mb-3.5" style={{ borderColor: "var(--line)" }}>
+                <span
+                  className="flex-1 font-mono-brand text-[0.78rem] overflow-hidden text-ellipsis whitespace-nowrap"
+                  style={{ color: "var(--ink-soft)" }}
+                >
+                  {url}
+                </span>
+                <CopyButton value={url} />
+              </div>
+              <p className="text-[0.82rem] m-0" style={{ color: "var(--ink-soft)" }}>
+                L&apos;écriture directe depuis cette page n&apos;est possible que sur certains téléphones Android
+                (Chrome). Ailleurs, passez par une application dédiée comme ci-dessus.
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type FieldDef = {
   key: keyof Company;
   label: string;
@@ -117,6 +259,8 @@ export function BusinessCard({ company }: { company: Company }) {
     .slice(0, 2)
     .join("")
     .toUpperCase();
+
+  const [showNfc, setShowNfc] = useState(false);
 
   function handleSaveContact() {
     const vcard = buildVCard(company);
@@ -192,7 +336,7 @@ export function BusinessCard({ company }: { company: Company }) {
       </div>
 
       {/* Pied : gérant + vCard */}
-      <div className="px-7 pt-4.5 pb-7 flex items-center justify-between gap-2.5 flex-wrap">
+      <div className="px-7 pt-4.5 pb-5 flex items-center justify-between gap-2.5 flex-wrap">
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
           <div
             className="w-[34px] h-[34px] rounded-full flex items-center justify-center font-display font-semibold text-sm shrink-0"
@@ -220,6 +364,30 @@ export function BusinessCard({ company }: { company: Company }) {
           Enregistrer le contact
         </button>
       </div>
+
+      {/* Actions : puce NFC (PDF / e-mail à venir) */}
+      <div className="px-7 py-5 border-t flex flex-wrap gap-2.5" style={{ borderColor: "var(--line)" }}>
+        <button
+          type="button"
+          onClick={() => setShowNfc(true)}
+          className="flex-1 flex items-center justify-center gap-2 h-11 px-2.5 rounded-[11px] border text-[0.82rem] font-medium cursor-pointer transition-colors"
+          style={{ borderColor: "var(--line)", background: "var(--paper)", color: "var(--ink)" }}
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
+            <path
+              d="M6 8a8 8 0 0 1 12 0M8.5 10.5a4.5 4.5 0 0 1 7 0M11 13a1.3 1.3 0 1 1 2 0c0 1-1.5 1.3-1.5 3"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <circle cx="12" cy="18.3" r="0.9" fill="currentColor" />
+          </svg>
+          Configurer une puce NFC
+        </button>
+      </div>
+
+      {showNfc && <NfcModal onClose={() => setShowNfc(false)} />}
     </div>
   );
 }
